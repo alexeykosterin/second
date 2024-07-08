@@ -1,0 +1,2 @@
+set PGPASSWORD=ns6oZHWgA8qqPB74EQ8F
+"C:\Users\ba931257\AppData\Local\Programs\pgAdmin 4\v6\runtime\psql.exe" -h localhost -d postgres -U postgres -p 5432 -f "C:\Users\ba931257\Desktop\SPOOL_ICS\test.txt"
