@@ -1,0 +1,73 @@
+.create_liquibase_master_files:
+  script:
+    - |
+      function create_liquibase_master_files_folder() {
+        FOLDER_TO_PROCESS=$1
+        IFS_TEMP=$IFS
+        IFS=$'\n'
+        {
+          echo '<?xml version="1.0" encoding="UTF-8"?>'
+          echo '<databaseChangeLog'
+          echo '  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"'
+          echo '  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+          echo '  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.5.xsd">'
+          
+          if [[ $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH ]]; then
+            for file in $(git diff --name-only $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA origin/$CI_COMMIT_BRANCH -- $FOLDER_TO_PROCESS); do
+              echo '    <include file="'"$file"'"/>'
+            done
+          else
+            for file in $(git diff --name-only origin/$CI_COMMIT_BRANCH:$FOLDER_TO_PROCESS origin/$CI_DEFAULT_BRANCH:$FOLDER_TO_PROCESS); do
+              echo '    <include file="'"$FOLDER_TO_PROCESS$file"'"/>'
+            done
+          fi
+          echo '    <include file="'"databaseChangeLogs/db.changelog-compile_invalid.xml"'"/>'
+          echo '</databaseChangeLog>'
+          IFS=$IFS_TEMP          
+        } > $FOLDER_TO_PROCESS/db.changelog-master.xml
+
+        echo "Created master file for $FOLDER_TO_PROCESS"
+      }
+  
+      function create_liquibase_master_files() {
+        for foldername in databaseChangeLogs*/
+        do
+          if [ -d "$foldername" ] && [ ! -L "$foldername" ]; then
+            create_liquibase_master_files_folder "$foldername"
+          fi
+        done
+      }
+    - |
+      colon=:
+      function replace_tokens_process_file() {
+        FILE_TO_PROCESS=$1
+        all_vars=$( env | awk -F= '{print $1}' | grep -E '^[a-zA-Z0-9_]+$' | grep -E "url|username|password")
+        while read var
+        do
+          if [ ! -z $var ]
+          then
+            val="${!var}"
+            val=$(echo "$val" | sed -r 's/\\/\\\\/g')
+            val=$(echo "$val" | sed -r 's/\//\\\//g')
+            val="${val//$'\n'/\\n}"
+            val=$(echo "$val" | sed -r 's/\&/\\&/g')
+            sed -i "s/$var: .*/$var: $val/g" $FILE_TO_PROCESS
+          fi
+        done <<< $all_vars
+
+        echo "tokens replaced$colon $FILE_TO_PROCESS"
+      }
+        
+      function replace_tokens() {
+        FILE_MASK=$1
+
+        shopt -s dotglob globstar
+        
+        for filename in $FILE_MASK
+        do
+          if [ -f "$filename" ]
+          then
+            replace_tokens_process_file "$filename" & wait
+          fi
+        done
+      }
