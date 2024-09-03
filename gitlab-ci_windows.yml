@@ -1,0 +1,468 @@
+include: 
+  - 'gitlab-cicd-scripts.yml'
+
+image:
+  name: maven:3.8.5-openjdk-17
+  entrypoint: [""]
+  
+stages:
+  - pre-prod
+  - test
+  - prod
+
+.datamodels_copy:
+  script:
+    - |
+      function get_datamodels() {
+      file=$1
+      if [[ $file =~ "xdmz" ]]; then
+      file_sed=`echo $file | sed -r 's/[\z]$//g'`
+      echo $file_sed
+      flag_datamodel=$(curl --noproxy "*" --location --request POST 'http://'$BIP_SERVER':9704/xmlpserver/services/v2/CatalogService?wsdl' --header 'SOAPAction: "#objectExist"' --header 'Content-Type: application/xml' --data-raw '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://xmlns.oracle.com/oxp/service/v2">
+       <soapenv:Header/>
+       <soapenv:Body>
+        <v2:objectExist>
+         <v2:reportObjectAbsolutePath>/sgi/printouts/Datamodels/'$file_sed'</v2:reportObjectAbsolutePath>
+         <v2:userID>'$PUBLISHER_LOGIN'</v2:userID>
+         <v2:password>'$PUBLISHER_PASS'</v2:password>
+       </v2:objectExist>
+       </soapenv:Body>
+       </soapenv:Envelope>' | grep -c "true" || true)
+       echo "Exist object datamodel "$file_sed
+       echo $file_sed
+       if [ $flag_datamodel == 1 ]; then
+           flag_datamodel=$(curl --noproxy "*" --location --request POST 'http://'$BIP_SERVER':9704/xmlpserver/services/v2/CatalogService?wsdl' --header 'SOAPAction: "#deleteObject"' --header 'Content-Type: application/xml' --data-raw '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://xmlns.oracle.com/oxp/service/v2">
+            <soapenv:Header/>
+            <soapenv:Body>
+             <v2:deleteObject>
+              <v2:objectAbsolutePath>/sgi/printouts/Datamodels/'$file_sed'</v2:objectAbsolutePath>
+              <v2:userID>'$PUBLISHER_LOGIN'</v2:userID>
+              <v2:password>'$PUBLISHER_PASS'</v2:password>
+            </v2:deleteObject>
+            </soapenv:Body>
+            </soapenv:Envelope>' | grep -c "true" || true)
+            if [ $flag_datamodel == 1 ]; then
+               echo "delete object datamodel "$file_sed
+            else
+               echo $file >> data_models_false.txt
+            fi
+       fi
+        base64 Datamodels/$file > temp.txt
+        echo "Datamodels/"$file
+        load_base64=`cat temp.txt`
+        dir=`echo ${file%.*}`
+        IFS=''
+        echo '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://xmlns.oracle.com/oxp/service/v2">
+         <soapenv:Header/>
+         <soapenv:Body>
+            <v2:uploadObject>
+               <v2:reportObjectAbsolutePathURL>/sgi/printouts/Datamodels/'$dir'</v2:reportObjectAbsolutePathURL>
+               <v2:objectType>xdmz</v2:objectType>
+               <v2:objectZippedData>'$load_base64'</v2:objectZippedData>
+               <v2:userID>'$PUBLISHER_LOGIN'</v2:userID>
+               <v2:password>'$PUBLISHER_PASS'</v2:password>
+            </v2:uploadObject>
+         </soapenv:Body>
+         </soapenv:Envelope>' > curl_data.txt
+        flag_datamodel=$(curl --noproxy "*" --location --request POST 'http://'$BIP_SERVER':9704/xmlpserver/services/v2/CatalogService?wsdl' --header 'SOAPAction: "#uploadObject"' --header 'Content-Type: application/xml' --data-binary '@curl_data.txt' | grep -c "faultcode" || true)
+           if [ $flag_datamodel == 0 ]; then
+               echo "Upload object datamodel "$file_sed
+               echo $file_sed >> data_models_true.txt
+           else
+               echo $file_sed >> data_models_false.txt
+           fi
+      fi
+      }
+    
+.printouts_copy:
+  script:
+    - |
+      function get_printouts() {
+      file=$1
+      if [[ $file =~ "xdoz" ]]; then
+      file_sed=`echo $file | sed -r 's/[\z]$//g'`
+      echo $file_sed
+      flag_printout=$(curl --noproxy "*" --location --request POST 'http://'$BIP_SERVER':9704/xmlpserver/services/v2/CatalogService?wsdl' --header 'SOAPAction: "#objectExist"' --header 'Content-Type: application/xml' --data-raw '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://xmlns.oracle.com/oxp/service/v2">
+       <soapenv:Header/>
+       <soapenv:Body>
+        <v2:objectExist>
+         <v2:reportObjectAbsolutePath>/sgi/printouts/'$file_sed'</v2:reportObjectAbsolutePath>
+         <v2:userID>'$PUBLISHER_LOGIN'</v2:userID>
+         <v2:password>'$PUBLISHER_PASS'</v2:password>
+       </v2:objectExist>
+       </soapenv:Body>
+       </soapenv:Envelope>' | grep -c "true" || true)
+       echo $file_sed
+       if [ $flag_printout == 1 ]; then
+           echo "Exist object printout "$file_sed
+           flag_printout=$(curl --noproxy "*" --location --request POST 'http://'$BIP_SERVER':9704/xmlpserver/services/v2/CatalogService?wsdl' --header 'SOAPAction: "#deleteObject"' --header 'Content-Type: application/xml' --data-raw '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://xmlns.oracle.com/oxp/service/v2">
+            <soapenv:Header/>
+            <soapenv:Body>
+             <v2:deleteObject>
+              <v2:objectAbsolutePath>/sgi/printouts/'$file_sed'</v2:objectAbsolutePath>
+              <v2:userID>'$PUBLISHER_LOGIN'</v2:userID>
+              <v2:password>'$PUBLISHER_PASS'</v2:password>
+            </v2:deleteObject>
+            </soapenv:Body>
+            </soapenv:Envelope>' | grep -c "true" || true)
+            if [ $flag_printout == 1 ]; then
+               echo "delete object printout "$file_sed
+            else
+               echo $file >> printout_false.txt
+            fi
+       fi
+        echo "Printouts/"$file
+        base64 Printouts/$file > temp.txt
+        load_base64=`cat temp.txt`
+        dir=`echo ${file%.*}`
+        IFS=''
+        #cat temp.txt
+        echo '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v2="http://xmlns.oracle.com/oxp/service/v2">
+         <soapenv:Header/>
+         <soapenv:Body>
+            <v2:uploadObject>
+               <v2:reportObjectAbsolutePathURL>/sgi/printouts/'$dir'</v2:reportObjectAbsolutePathURL>
+               <v2:objectType>xdoz</v2:objectType>
+               <v2:objectZippedData>'$load_base64'</v2:objectZippedData>
+               <v2:userID>'$PUBLISHER_LOGIN'</v2:userID>
+               <v2:password>'$PUBLISHER_PASS'</v2:password>
+            </v2:uploadObject>
+         </soapenv:Body>
+         </soapenv:Envelope>' > curl_data.txt
+        flag_printout=$(curl --noproxy "*" --location --request POST 'http://'$BIP_SERVER':9704/xmlpserver/services/v2/CatalogService?wsdl' --header 'SOAPAction: "#uploadObject"' --header 'Content-Type: application/xml' --data-binary '@curl_data.txt' | grep -c "faultcode" || true)
+           if [ $flag_printout == 0 ]; then
+               echo "Upload object printout "$file_sed
+               echo $file_sed >> printout_true.txt
+           else
+               echo $file_sed >> printout_false.txt
+           fi
+      fi
+      }
+
+###########TEST###########
+
+test-add-xdofiles-job:
+  stage: test
+  when: manual
+  script:
+    - !reference [.datamodels_copy, script]
+    - !reference [.printouts_copy, script]
+    - |
+      FOLDER_TO_PROCESS=Datamodels/
+      IFS_TEMP=$IFS
+      if [ -f data_models_true.txt ]; then rm -f data_models_true.txt; fi
+      if [ -f data_models_false.txt ]; then rm -f data_models_false.txt; fi
+      for file in $(git diff --name-only origin/$CI_COMMIT_BRANCH:$FOLDER_TO_PROCESS origin/$CI_DEFAULT_BRANCH:$FOLDER_TO_PROCESS); do
+        get_datamodels "$file"
+      done
+      if [ -f data_models_true.txt ]; then
+        if [ `cat data_models_true.txt | wc -l` > 0 ]; then
+            echo "Обновлены Datamodels:"
+            cat data_models_true.txt
+        fi
+      fi
+      if [ -f data_models_false.txt ]; then
+        if [ `cat data_models_false.txt | wc -l` > 0 ]; then
+            echo "Не обновлены Datamodels:"
+            cat data_models_false.txt
+        fi
+      fi
+    - |
+      FOLDER_TO_PROCESS=Printouts/
+      IFS=$IFS_TEMP
+      if [ -f printout_true.txt ]; then rm -f printout_true.txt; fi
+      if [ -f printout_false.txt ]; then rm -f printout_false.txt; fi
+      echo $CI_COMMIT_BRANCH $FOLDER_TO_PROCESS $CI_DEFAULT_BRANCH
+      for file in $(git diff --name-only origin/$CI_COMMIT_BRANCH:$FOLDER_TO_PROCESS origin/$CI_DEFAULT_BRANCH:$FOLDER_TO_PROCESS); do
+        get_printouts "$file"
+      done
+      if [ -f printout_true.txt ]; then
+        if [ `cat printout_true.txt | wc -l` > 0 ]; then
+            echo "Обновлены Printouts:"
+            cat printout_true.txt
+        fi
+      fi
+      if [ -f printout_false.txt ]; then
+        if [ `cat printout_false.txt | wc -l` > 0 ]; then
+            echo "Не обновлены Printouts:"
+            cat printout_false.txt
+        fi
+      fi
+      IFS=$IFS_TEMP
+  rules:
+    - if: $CI_COMMIT_BRANCH == "INSIS_TEMP"
+  tags:
+    - docker
+  environment: TEST
+  #needs:
+  #  - job: copy-pollers-job
+  #    optional: true
+
+test-copy-pollers-job:
+  stage: test
+  when: manual
+  script:
+    - |
+      mkdir -p ~/.ssh
+      echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519KKKK
+      chmod -R 700 ~/.ssh
+      FOLDER_TO_PROCESS=Pollers/
+      for file in $(git diff --name-only origin/$CI_COMMIT_BRANCH:$FOLDER_TO_PROCESS origin/$CI_DEFAULT_BRANCH:$FOLDER_TO_PROCESS); do
+        echo "Скопирован Poller:" $FOLDER_TO_PROCESS$file
+        scp -ri ~/.ssh/id_ed25519KKKK -o StrictHostKeyChecking=no /builds/back-office/insis/$FOLDER_TO_PROCESS$file SGI\\$TECH_USER@$DB_SERVER:D:/IMPORT_POLLERS
+      done
+  rules:
+    - if: $CI_COMMIT_BRANCH == "INSIS_TEMP"
+  tags:
+    - docker
+  environment: TEST
+  
+test-copy-config-job:
+  stage: test
+  when: manual
+  script:
+    - |
+      mkdir -p ~/.ssh
+      echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519KKKK
+      chmod -R 700 ~/.ssh
+      FOLDER_TO_PROCESS=Config/TEST
+      for config_dir in $(ls -dtr1 $FOLDER_TO_PROCESS/*/ | cut -f3 -d '/'); do
+        scp -ri ~/.ssh/id_ed25519KKKK -o StrictHostKeyChecking=no /builds/back-office/insis/$FOLDER_TO_PROCESS/$config_dir/* SGI\\$TECH_USER@$APP_SERVER:D:/Oracle/Middleware12/Oracle_Home/user_projects/applications/INSIS/$config_dir
+        echo "Скопирован Config:" /$config_dir; 
+      done
+  rules:
+    - if: $CI_COMMIT_BRANCH == "INSIS_TEMP"
+  tags:
+    - docker
+  environment: TEST
+
+test-deploy-liquibase-job:
+  stage: test
+  when: manual
+  #before_script:
+  #  - export prop_value=`cat liquibase/liquibase-test.properties | cut -d ':' -f1`
+  script:
+    #- git config --global http.sslVerify false
+    #- git fetch origin master:master
+    #- git branch 
+    - !reference [.create_liquibase_master_files, script]
+    - create_liquibase_master_files
+    - replace_tokens "liquibase/liquibase.properties"
+    - cat databaseChangeLogs/db.changelog-master.xml
+    - cat liquibase/liquibase.properties
+    - find ./liquibase/*.* -type f -not -name '*.bat' -exec cp {} ./ \;
+    - mvn -s ./.m2/settings.xml -T 1C org.liquibase:liquibase-maven-plugin:3.5.3:update -Dmaven.resolver.transport=wagon -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "INSIS_TEMP"
+  tags:
+    - docker
+  environment: TEST
+  needs:
+    - job: test-copy-pollers-job
+      optional: true
+
+test-restart-services-job:
+  stage: test
+  #needs: ["test-deploy-liquibase-job"]
+  when: manual
+  script:
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519KKKK
+    - chmod -R 700 ~/.ssh
+    - |
+      ssh -l $TECH_USER -i ~/.ssh/id_ed25519KKKK -o StrictHostKeyChecking=no $APP_SERVER "C:\Windows\system32\WindowsPowerShell\v1.0\Powershell.exe -executionpolicy remotesigned -File  D:\start_stop_insis\restart\scripts\Insis_restart_all_services.ps1"
+  environment:
+    name: TEST
+  rules:
+    - if: $CI_COMMIT_BRANCH == "INSIS_TEMP"
+  tags:
+    - docker
+  needs:
+    - job: test-deploy-liquibase-job
+    - job: test-copy-config-job
+      optional: true
+
+###########PROD###########
+
+preprod-deploy-job:
+  stage: pre-prod
+  when: manual
+  script:
+    - !reference [.create_liquibase_master_files, script]
+    - create_liquibase_master_files
+    - replace_tokens "liquibase/liquibase.properties"
+    - cat databaseChangeLogs/db.changelog-master.xml
+    - cat liquibase/liquibase.properties
+    - find ./liquibase/*.* -type f -not -name '*.bat' -exec cp {} ./ \;
+    - mvn -s ./.m2/settings.xml -T 1C org.liquibase:liquibase-maven-plugin:3.5.3:update -Dmaven.resolver.transport=wagon -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "INSIS_PREPROD"
+  tags:
+    - docker
+  environment: C1
+
+prod-add-xdofiles-job:
+  stage: prod
+  when: manual
+  script:
+    - !reference [.datamodels_copy, script]
+    - !reference [.printouts_copy, script]
+    - |
+      FOLDER_TO_PROCESS=Datamodels/
+      IFS_TEMP=$IFS
+      echo $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA $CI_COMMIT_BRANCH
+      if [ -f data_models_true.txt ]; then rm -f data_models_true.txt; fi
+      if [ -f data_models_false.txt ]; then rm -f data_models_false.txt; fi
+      if [[ $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH ]]; then
+        for file in $(git diff --name-only $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA origin/$CI_COMMIT_BRANCH -- $FOLDER_TO_PROCESS); do
+          file=$file | cut -f2 -d '/'
+          get_datamodels "$file"
+        done
+      fi
+      if [ -f data_models_true.txt ]; then
+        if [ `cat data_models_true.txt | wc -l` > 0 ]; then
+            echo "Обновлены Datamodels:"
+            cat data_models_true.txt
+        fi
+      fi
+      if [ -f data_models_false.txt ]; then
+        if [ `cat data_models_false.txt | wc -l` > 0 ]; then
+            echo "Не обновлены Datamodels:"
+            cat data_models_false.txt
+        fi
+      fi
+    - |
+      FOLDER_TO_PROCESS=Printouts/
+      IFS=$IFS_TEMP
+      if [ -f printout_true.txt ]; then rm -f printout_true.txt; fi
+      if [ -f printout_false.txt ]; then rm -f printout_false.txt; fi
+      echo $CI_COMMIT_BRANCH $FOLDER_TO_PROCESS $CI_DEFAULT_BRANCH
+      for file in $(git diff --name-only $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA origin/$CI_COMMIT_BRANCH -- $FOLDER_TO_PROCESS); do
+        file=$file | cut -f2 -d '/'
+        get_printouts "$file"
+      done
+      if [ -f printout_true.txt ]; then
+        if [ `cat printout_true.txt | wc -l` > 0 ]; then
+            echo "Обновлены Printouts:"
+            cat printout_true.txt
+        fi
+      fi
+      if [ -f printout_false.txt ]; then
+        if [ `cat printout_false.txt | wc -l` > 0 ]; then
+            echo "Не обновлены Printouts:"
+            cat printout_false.txt
+        fi
+      fi
+      IFS=$IFS_TEMP
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  tags:
+    - docker
+  environment: PROD
+  #needs:
+  #  - job: copy-pollers-job
+  #    optional: true
+
+prod-copy-pollers-job:
+  stage: prod
+  when: manual
+  script:
+    - |
+      echo $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA $CI_COMMIT_BRANCH
+      mkdir -p ~/.ssh
+      echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519KKKK
+      chmod -R 700 ~/.ssh
+      FOLDER_TO_PROCESS=Pollers/
+      for file in $(git diff --name-only $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA origin/$CI_COMMIT_BRANCH -- $FOLDER_TO_PROCESS); do
+        file=$file | cut -f2 -d '/'
+        echo "Скопирован Poller:" $FOLDER_TO_PROCESS$file
+        scp -ri ~/.ssh/id_ed25519KKKK -o StrictHostKeyChecking=no /builds/back-office/insis/$FOLDER_TO_PROCESS$file SGI\\$TECH_USER@$DB_SERVER:D:/IMPORT_POLLERS
+      done
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  tags:
+    - docker
+  environment: PROD
+        
+prod-copy-config-job:
+  stage: prod
+  when: manual
+  script:
+    - |
+      mkdir -p ~/.ssh
+      echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519KKKK
+      chmod -R 700 ~/.ssh
+      FOLDER_TO_PROCESS=Config/PROD
+      for config_dir in $(ls -dtr1 $FOLDER_TO_PROCESS/*/ | cut -f3 -d '/'); do
+        scp -ri ~/.ssh/id_ed25519KKKK -o StrictHostKeyChecking=no /builds/back-office/insis/$FOLDER_TO_PROCESS/$config_dir/* SGI\\$TECH_USER@$APP_SERVER:D:/Oracle/Middleware12/Oracle_Home/user_projects/applications/INSIS/$config_dir
+        echo "Скопирован Config:" /$config_dir; 
+      done
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  tags:
+    - docker
+  environment: PROD
+
+prod-deploy-liquibase-job:
+  stage: prod
+  when: manual
+  needs: ["preprod-deploy-job"]
+  script:
+    - !reference [.create_liquibase_master_files, script]
+    - create_liquibase_master_files
+    - replace_tokens "liquibase/liquibase.properties"
+    - cat databaseChangeLogs/db.changelog-master.xml
+    - cat liquibase/liquibase.properties
+    - find ./liquibase/*.* -type f -not -name '*.bat' -exec cp {} ./ \;
+    - mvn -s ./.m2/settings.xml -T 1C org.liquibase:liquibase-maven-plugin:3.5.3:update -Dmaven.resolver.transport=wagon -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  tags:
+    - docker
+  environment: PROD
+  needs:
+    - job: prod-copy-pollers-job
+      optional: true
+
+prod-restart-services-job:
+  stage: prod
+  #needs: ["prod-deploy-liquibase-job"]
+  when: manual
+  script:
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519KKKK
+    - chmod -R 700 ~/.ssh
+    - |
+      ssh -l $TECH_USER -i ~/.ssh/id_ed25519KKKK -o StrictHostKeyChecking=no $APP_SERVER "C:\Windows\system32\WindowsPowerShell\v1.0\Powershell.exe -executionpolicy remotesigned -File  D:\start_stop_insis\restart\scripts\Insis_restart_all_services.ps1"
+  environment:
+    name: PROD
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  tags:
+    - docker
+  needs:
+    - job: prod-deploy-liquibase-job
+    - job: prod-copy-config-job
+      optional: true
+      
+prod-restart-service-job-4:
+  stage: prod
+  #needs: ["prod-deploy-liquibase-job"]
+  when: manual
+  script:
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519KKKK
+    - chmod -R 700 ~/.ssh
+    - |
+      ssh -l $TECH_USER -i ~/.ssh/id_ed25519KKKK -o StrictHostKeyChecking=no $APP_SERVER "C:\Windows\system32\WindowsPowerShell\v1.0\Powershell.exe -executionpolicy remotesigned -File  D:\start_stop_insis\restart\scripts\Insis_restart_InsisSrv04.ps1"
+  environment:
+    name: PROD
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  tags:
+    - docker
+  needs:
+    - job: prod-deploy-liquibase-job
+    - job: prod-copy-config-job
+    - job: prod-restart-services-job
+      optional: true
