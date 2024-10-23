@@ -361,7 +361,6 @@ test-restart-services-job:
       InsisSrv08.service
       InsisSrv09.service
       InsisSrv10.service
-      InsisSrv11.service
       InsisSrv12.service)
       ####
       for farg in ${list[*]}
@@ -371,11 +370,30 @@ test-restart-services-job:
       if [ $StopService -eq 2 ]
       then
       echo "$farg was stopped"
+      StopService=0
+      StopServiceAct="interim"
       break
       else
-      ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl stop $farg"
-      sleep 5
-      StopService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl status $farg | grep -E 'inactive| Stopped InsisSrv' | wc -l"`
+      StopServiceAct=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl is-active --quiet $farg && echo 'active' || echo 'inactive'"`
+      echo $farg "systemctl" $StopServiceAct
+      if [ $StopServiceAct == 'active' ]
+      then
+         ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl stop $farg"
+         sleep 5
+         StopService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl status $farg | grep -E 'inactive| Stopped InsisSrv' | wc -l"`
+      elif [ $StopServiceAct == 'inactive' ]
+      then
+         argforgrep=`echo $farg | cut -d '.' -f1`
+         StopServicePs=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "ps -ef | grep "[D]weblogic.Name=$argforgrep" | wc -l"`
+         if [[ $StopServicePs -gt 0 ]]
+         then
+           echo $farg "process active; wait for stop"
+           ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo /oracle/middleware/user_projects/domains/INSIS/bin/stopManagedWebLogic.sh $argforgrep t3://localhost:7700"
+           StopService=2
+         else
+           StopService=2
+         fi
+      fi
       fi
       done
       done
@@ -385,18 +403,25 @@ test-restart-services-job:
       for sarg in ${list[*]}
       do
       TimeForLog=`date "+%Y-%m-%d %H:%M:%S"`
-      echo $TimeForLog
+      echo $TimeForLog "launching: " $sarg
       ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl start $sarg"
       StartService=0
       while true; do
-      if [ $StartService -gt 0 ]
+      if [[ $StartService -gt 0 && $StopServiceAct == 'active' ]]
       then
-      echo "$sarg state changed to RUNNING"
+      echo "start $StartService"
+      echo "$sarg was start"
       break
       else
-      echo "$sarg not ready"
+      sleep 5
+      echo $StartService "wait for auto launch"
       StartService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo journalctl --since '$TimeForLog' -u $sarg | grep 'Server state changed to RUNNING' | wc -l"`
-      sleep 10
+      StopServiceAct=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl is-active --quiet $sarg && echo 'active' || echo 'inactive'"`
+      echo "systemctl: " $StopServiceAct
+      case $StartService in
+      0) echo "process not ready";;
+      1) echo "process ready";;
+      esac
       fi
       done
       done
@@ -579,7 +604,6 @@ prod-restart-services-job:
       InsisSrv08.service
       InsisSrv09.service
       InsisSrv10.service
-      InsisSrv11.service
       InsisSrv12.service)
       ####
       for farg in ${list[*]}
@@ -589,11 +613,30 @@ prod-restart-services-job:
       if [ $StopService -eq 2 ]
       then
       echo "$farg was stopped"
+      StopService=0
+      StopServiceAct="interim"
       break
       else
-      ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl stop $farg"
-      sleep 5
-      StopService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl status $farg | grep -E 'inactive| Stopped InsisSrv' | wc -l"`
+      StopServiceAct=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl is-active --quiet $farg && echo 'active' || echo 'inactive'"`
+      echo $farg "systemctl" $StopServiceAct
+      if [ $StopServiceAct == 'active' ]
+      then
+         ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl stop $farg"
+         sleep 5
+         StopService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl status $farg | grep -E 'inactive| Stopped InsisSrv' | wc -l"`
+      elif [ $StopServiceAct == 'inactive' ]
+      then
+         argforgrep=`echo $farg | cut -d '.' -f1`
+         StopServicePs=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "ps -ef | grep "[D]weblogic.Name=$argforgrep" | wc -l"`
+         if [[ $StopServicePs -gt 0 ]]
+         then
+           echo $farg "process active; wait for stop"
+           ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo /oracle/middleware/user_projects/domains/INSIS/bin/stopManagedWebLogic.sh $argforgrep t3://localhost:7700"
+           StopService=2
+         else
+           StopService=2
+         fi
+      fi
       fi
       done
       done
@@ -603,18 +646,25 @@ prod-restart-services-job:
       for sarg in ${list[*]}
       do
       TimeForLog=`date "+%Y-%m-%d %H:%M:%S"`
-      echo $TimeForLog
+      echo $TimeForLog "launching: " $sarg
       ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl start $sarg"
       StartService=0
       while true; do
-      if [ $StartService -gt 0 ]
+      if [[ $StartService -gt 0 && $StopServiceAct == 'active' ]]
       then
-      echo "$sarg state changed to RUNNING"
+      echo "start $StartService"
+      echo "$sarg was start"
       break
       else
-      echo "$sarg not ready"
+      sleep 5
+      echo $StartService "wait for auto launch"
       StartService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo journalctl --since '$TimeForLog' -u $sarg | grep 'Server state changed to RUNNING' | wc -l"`
-      sleep 10
+      StopServiceAct=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl is-active --quiet $sarg && echo 'active' || echo 'inactive'"`
+      echo "systemctl: " $StopServiceAct
+      case $StartService in
+      0) echo "process not ready";;
+      1) echo "process ready";;
+      esac
       fi
       done
       done
@@ -647,11 +697,30 @@ prod-restart-service-job-4:
       if [ $StopService -eq 2 ]
       then
       echo "$farg was stopped"
+      StopService=0
+      StopServiceAct="interim"
       break
       else
-      ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl stop $farg"
-      sleep 5
-      StopService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl status $farg | grep -E 'inactive| Stopped InsisSrv' | wc -l"`
+      StopServiceAct=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl is-active --quiet $farg && echo 'active' || echo 'inactive'"`
+      echo $farg "systemctl" $StopServiceAct
+      if [ $StopServiceAct == 'active' ]
+      then
+         ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl stop $farg"
+         sleep 5
+         StopService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl status $farg | grep -E 'inactive| Stopped InsisSrv' | wc -l"`
+      elif [ $StopServiceAct == 'inactive' ]
+      then
+         argforgrep=`echo $farg | cut -d '.' -f1`
+         StopServicePs=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "ps -ef | grep "[D]weblogic.Name=$argforgrep" | wc -l"`
+         if [[ $StopServicePs -gt 0 ]]
+         then
+           echo $farg "process active; wait for stop"
+           ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo /oracle/middleware/user_projects/domains/INSIS/bin/stopManagedWebLogic.sh $argforgrep t3://localhost:7700"
+           StopService=2
+         else
+           StopService=2
+         fi
+      fi
       fi
       done
       done
@@ -661,18 +730,25 @@ prod-restart-service-job-4:
       for sarg in ${list[*]}
       do
       TimeForLog=`date "+%Y-%m-%d %H:%M:%S"`
-      echo $TimeForLog
+      echo $TimeForLog "launching: " $sarg
       ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl start $sarg"
       StartService=0
       while true; do
-      if [ $StartService -gt 0 ]
+      if [[ $StartService -gt 0 && $StopServiceAct == 'active' ]]
       then
-      echo "$sarg state changed to RUNNING"
+      echo "start $StartService"
+      echo "$sarg was start"
       break
       else
-      echo "$sarg not ready"
+      sleep 5
+      echo $StartService "wait for auto launch"
       StartService=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo journalctl --since '$TimeForLog' -u $sarg | grep 'Server state changed to RUNNING' | wc -l"`
-      sleep 10
+      StopServiceAct=`ssh -l $TECH_USER -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $APP_SERVER "sudo systemctl is-active --quiet $sarg && echo 'active' || echo 'inactive'"`
+      echo "systemctl: " $StopServiceAct
+      case $StartService in
+      0) echo "process not ready";;
+      1) echo "process ready";;
+      esac
       fi
       done
       done
